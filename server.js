@@ -1,3 +1,5 @@
+process.on('uncaughtException', (err) => console.log('DB/Server notice:', err.message));
+process.on('unhandledRejection', (reason) => console.log('Unhandled notice:', reason));
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
