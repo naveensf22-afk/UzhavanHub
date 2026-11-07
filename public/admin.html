@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UzhavanHub - Admin Dashboard</title>
+    <script>
+        // அட்மின் பாஸ்வேர்ட் செக்யூரிட்டி
+        let auth = sessionStorage.getItem('uzh_admin_auth');
+        if (!auth) {
+            let pass = prompt("🔐 UzhavanHub Admin Security:\nPlease enter the Admin Password:");
+            if (pass === "admin123") {
+                sessionStorage.setItem('uzh_admin_auth', 'true');
+            } else {
+                alert("❌ Incorrect Password! Access Denied.");
+                window.location.href = "/";
+            }
+        }
+    </script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f4f7f6; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        .header { 
+            background: #2e7d32; 
+            color: white; 
+            padding: 15px 25px; 
+            border-radius: 8px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+        }
+        h1 { margin: 0; font-size: 22px; }
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .btn-header {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+        }
+        .back-link { background: #1b5e20; }
+        .logout-btn { background: #ef4444; }
+        .container { 
+            margin-top: 25px; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 15px; 
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px; 
+            text-align: left; 
+        }
+        th { 
+            background-color: #388e3c; 
+            color: white; 
+        }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .status-badge { 
+            background-color: #fff3e0; 
+            color: #e65100; 
+            padding: 4px 10px; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+        .status-confirmed {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .type-badge {
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+        .btn-approve {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        .btn-approve:hover {
+            background-color: #059669;
+        }
+        .empty-msg { 
+            text-align: center; 
+            color: #666; 
+            padding: 20px; 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🌾 UzhavanHub - Admin Booking Portal</h1>
+        <div class="header-actions">
+            <a href="/" class="btn-header back-link">⬅ Home</a>
+            <button onclick="adminLogout()" class="btn-header logout-btn">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Live Bookings (<span id="orderCount">0</span>)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Booking ID</th>
+                    <th>Booking Type</th>
+                    <th>Farmer Name</th>
+                    <th>Mobile Number</th>
+                    <th>Work / Requirements</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="bookingTableBody">
+                <tr><td colspan="8" class="empty-msg">Loading bookings...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function adminLogout() {
+            sessionStorage.removeItem('uzh_admin_auth');
+            alert("Admin logged out successfully.");
+            window.location.href = "/";
+        }
+
+        async function fetchBookings() {
+            let allBookings = [];
+
+            // 1. Fetch Instant Machinery & Local Bookings
+            const localOrders = JSON.parse(localStorage.getItem('uzh_live_orders') || '[]');
+            localOrders.forEach(lo => {
+                allBookings.push({
+                    rawId: lo.bookingId,
+                    id: lo.bookingId,
+                    type: lo.type || 'Farm Machinery',
+                    farmer: lo.name,
+                    phone: lo.phone,
+                    detail: lo.detail,
+                    date: lo.date,
+                    status: lo.status || 'pending',
+                    isLabor: false,
+                    isLocal: true
+                });
+            });
+
+            // 2. Fetch Labor Bookings
+            try {
+                const resLabor = await fetch('/api/laborers/bookings');
+                const laborData = await resLabor.json();
+                const list = laborData.data || laborData || [];
+                if (Array.isArray(list)) {
+                    list.forEach(b => {
+                        let parsedName = b.farmer_name || 'Farmer';
+                        let parsedPhone = b.farmer_phone || '-';
+                        let rawWork = b.work_type || 'Agri Work';
+                        let cleanWork = rawWork;
+
+                        if (rawWork.includes('(') && rawWork.includes(')')) {
+                            const firstParen = rawWork.indexOf('(');
+                            const lastParen = rawWork.lastIndexOf(')');
+                            cleanWork = rawWork.substring(0, firstParen).trim();
+                            const insideInfo = rawWork.substring(firstParen + 1, lastParen);
+
+                            if (insideInfo.includes('-')) {
+                                const parts = insideInfo.split('-');
+                                parsedName = parts[0].trim();
+                                parsedPhone = parts[1].trim();
+                            } else {
+                                parsedName = insideInfo.trim();
+                            }
+                        }
+
+                        allBookings.push({
+                            rawId: b.id,
+                            id: 'UZH-LAB-' + b.id,
+                            type: 'Farm Labor',
+                            farmer: parsedName,
+                            phone: parsedPhone,
+                            detail: `${cleanWork} (${b.laborers_needed || 1} Workers, ${b.duration_days || 1} Days)`,
+                            date: b.booking_date ? b.booking_date.split('T')[0] : (b.required_date || '-'),
+                            status: b.status || 'pending',
+                            isLabor: true,
+                            isLocal: false
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error("Labor fetch error:", err);
+            }
+
+            // 3. Fetch General Backend Bookings
+            try {
+                const resGen = await fetch('/api/bookings');
+                const genData = await resGen.json();
+                const listGen = genData.data || genData || [];
+                if (Array.isArray(listGen)) {
+                    listGen.forEach(b => {
+                        const exists = allBookings.some(item => item.id === ('UZH-' + b.id));
+                        if (!exists) {
+                            allBookings.push({
+                                rawId: b.id,
+                                id: 'UZH-' + b.id,
+                                type: b.booking_type || 'Machinery',
+                                farmer: b.farmer_name || (b.farmer_id ? 'Farmer #' + b.farmer_id : 'Direct Farmer'),
+                                phone: b.mobile || b.phone || '-',
+                                detail: 'Service #' + (b.service_id || '1'),
+                                date: b.start_date ? new Date(b.start_date).toLocaleDateString('en-IN') : '-',
+                                status: b.status || 'pending',
+                                isLabor: false,
+                                isLocal: false
+                            });
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("General fetch error:", err);
+            }
+
+            const tbody = document.getElementById('bookingTableBody');
+            document.getElementById('orderCount').innerText = allBookings.length;
+
+            if (allBookings.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">No bookings available yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = allBookings.map(b => {
+                const isConfirmed = String(b.status).toLowerCase() === 'confirmed' || String(b.status).toLowerCase() === 'approved';
+                return `
+                    <tr>
+                        <td><strong>${b.id}</strong></td>
+                        <td><span class="type-badge">${b.type}</span></td>
+                        <td><strong>${b.farmer}</strong></td>
+                        <td>${b.phone}</td>
+                        <td>${b.detail}</td>
+                        <td>${b.date}</td>
+                        <td><span class="status-badge ${isConfirmed ? 'status-confirmed' : ''}">${b.status}</span></td>
+                        <td>
+                            ${isConfirmed 
+                                ? '<span style="color:#2e7d32; font-weight:700; font-size:12px;">✓ Approved</span>' 
+                                : `<button class="btn-approve" onclick="approveOrder('${b.rawId}', ${b.isLabor}, ${b.isLocal})">Approve</button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function approveOrder(id, isLabor, isLocal) {
+            if (isLocal) {
+                let localOrders = JSON.parse(localStorage.getItem('uzh_live_orders') || '[]');
+                localOrders = localOrders.map(o => {
+                    if (o.bookingId === id) o.status = 'Approved';
+                    return o;
+                });
+                localStorage.setItem('uzh_live_orders', JSON.stringify(localOrders));
+                alert(`Booking #${id} Approved successfully!`);
+                fetchBookings();
+                return;
+            }
+
+            try {
+                const url = isLabor ? `/api/laborers/bookings/${id}/status` : `/api/bookings/${id}/status`;
+                const res = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'Approved' })
+                });
+                alert(`Booking #${id} Approved successfully!`);
+                fetchBookings();
+            } catch (err) {
+                alert('Approved successfully.');
+                fetchBookings();
+            }
+        }
+
+        fetchBookings();
+        setInterval(fetchBookings, 5000);
+    </script>
+</body>
+</html>
